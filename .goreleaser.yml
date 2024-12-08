@@ -1,0 +1,25 @@
+version: 2
+project_name: jobwrapper
+
+# Configure the builds
+builds:
+  - id: jobwrapper
+    main: ./cmd/jobwrapper/main.go
+    binary: jobwrapper
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+# Define archives for distribution
+archives:
+  - id: jobwrapper
+    builds:
+      - jobwrapper
+    format: tar.gz
+    files:
+      - LICENSE
+      - README.md
