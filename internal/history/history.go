@@ -14,7 +14,44 @@ import (
 
 const maxArgLength = 15
 
-func WriteHistory(fs filesystem.FileSystem, cfg *config.Config, exePath string, maxLines int, args []string) (func() error, error) {
+type HistoryWriter interface {
+	MarkExecutionStart()
+	MarkExecutionEnd()
+	WriteHistory(err error) error
+}
+
+type historyJsonFileWriter struct {
+	fs                 filesystem.FileSystem
+	cfg                *config.Config
+	exePath            string
+	args               []string
+	startTime          time.Time
+	startExecutionTime *time.Time
+	endExecutionTime   *time.Time
+}
+
+func (h *historyJsonFileWriter) MarkExecutionStart() {
+	startTime := time.Now()
+	h.startExecutionTime = &startTime
+}
+
+func (h *historyJsonFileWriter) MarkExecutionEnd() {
+	endTime := time.Now()
+	h.endExecutionTime = &endTime
+}
+
+func (h *historyJsonFileWriter) WriteHistory(err error) error {
+
+	history := h.createLogEntry(err)
+
+	if err := appendHistory(h.fs, filepath.Join(h.cfg.LockDir, filepath.Base(h.exePath)+".log"), history, h.cfg.HistoryLines); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func NewHistoryWriter(fs filesystem.FileSystem, cfg *config.Config, exePath string, args []string) (HistoryWriter, error) {
 	startTime := time.Now()
 	exeName := filepath.Base(exePath)
 	logPath := filepath.Join(cfg.LockDir, exeName+".log")
@@ -26,19 +63,12 @@ func WriteHistory(fs filesystem.FileSystem, cfg *config.Config, exePath string, 
 	}
 	file.Close()
 
-	return func() error {
-		truncatedArgs := truncateArgs(args)
-		argsStr := strings.Join(truncatedArgs, " ")
-
-		stopTime := time.Now()
-		duration := stopTime.Sub(startTime)
-		history := createLogEntry(startTime, stopTime, duration, exeName, argsStr, exePath)
-
-		if err := appendHistory(fs, logPath, history, maxLines); err != nil {
-			return err
-		}
-
-		return nil
+	return &historyJsonFileWriter{
+		fs:        fs,
+		cfg:       cfg,
+		exePath:   exePath,
+		args:      args,
+		startTime: startTime,
 	}, nil
 }
 
@@ -54,16 +84,40 @@ func truncateArgs(args []string) []string {
 	return truncatedArgs
 }
 
-func createLogEntry(startTime, stopTime time.Time, duration time.Duration, exeName, argsStr, exePath string) string {
-	var logBuffer strings.Builder
+func (h *historyJsonFileWriter) createLogEntry(err error) string {
+	var (
+		exeName       = filepath.Base(h.exePath)
+		logBuffer     strings.Builder
+		logArgs       []any
+		truncatedArgs = truncateArgs(h.args)
+	)
+	logArgs = append(logArgs,
+		"start", h.startTime.Format("2006-01-02 15:04:05"),
+	)
+
+	if h.startExecutionTime != nil {
+		logArgs = append(logArgs,
+			"wait_duration", h.startExecutionTime.Sub(h.startTime).String(),
+			"start_execution", h.startExecutionTime.Format("2006-01-02 15:04:05"),
+		)
+	}
+	if h.startExecutionTime != nil && h.endExecutionTime != nil {
+		logArgs = append(logArgs,
+			"end_execution", h.endExecutionTime.Format("2006-01-02 15:04:05"),
+			"execution_duration", h.endExecutionTime.Sub(*h.startExecutionTime).String(),
+		)
+	}
+
+	logArgs = append(logArgs,
+		"executable", exeName,
+		"args", strings.Join(truncatedArgs, " "),
+		"executable_path", h.exePath,
+		"error", err,
+	)
+
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
 	logger.Info("script execution",
-		"start", startTime.Format("2006-01-02 15:04:05"),
-		"stop", stopTime.Format("2006-01-02 15:04:05"),
-		"duration", duration.String(),
-		"executable", exeName,
-		"args", argsStr,
-		"executable_path", exePath,
+		logArgs...,
 	)
 	return logBuffer.String()
 }

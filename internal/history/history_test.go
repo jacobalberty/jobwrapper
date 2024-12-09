@@ -21,14 +21,18 @@ func TestWriteHistory(t *testing.T) {
 		LockDir: "/tmp",
 	}
 
-	writeFunc, err := WriteHistory(mockFS, cfg, filePath, maxLines, nil)
+	historyWriter, err := NewHistoryWriter(mockFS, cfg, filePath, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
+	historyWriter.MarkExecutionEnd()
+
 	time.Sleep(1 * time.Second) // Simulate some duration
 
-	err = writeFunc()
+	historyWriter.MarkExecutionEnd()
+
+	err = historyWriter.WriteHistory(nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

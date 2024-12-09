@@ -38,6 +38,11 @@ func run(
 	lockFactory lock.LockFactory,
 	commandCtx command.CommandContextFunc,
 ) error {
+	var (
+		historyWriter history.HistoryWriter
+		locker        lock.Locker
+		err           error
+	)
 	if len(args) < 2 {
 		return fmt.Errorf("usage: jobwrapper <group> <script> [args...]")
 	}
@@ -53,42 +58,47 @@ func run(
 	cfg := config.LoadConfig(fs)
 
 	// Create the locker using the LockFactory function
-	locker, err := lockFactory(&cfg, fs)
+	locker, err = lockFactory(&cfg, fs)
 	if err != nil {
-		return fmt.Errorf("error creating locker: %w", err)
+		return err
 	}
+
+	historyWriter, err = history.NewHistoryWriter(fs, &cfg, cmd, cmdArgs)
+	if err != nil {
+		return fmt.Errorf("error creating history writer: %w", err)
+	}
+	defer func() {
+		if historyErr := historyWriter.WriteHistory(err); historyErr != nil {
+			fmt.Fprintf(stderr, "Error writing history: %v\n", historyErr)
+		}
+	}()
 
 	// Set up a timeout for the lock acquisition
 	lockCtx, lockCancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer lockCancel()
 
 	// Acquire lock
-	if err := locker.Acquire(lockCtx, group); err != nil {
+	if err = locker.Acquire(lockCtx, group); err != nil {
 		return fmt.Errorf("error acquiring lock for group '%s': %w", group, err)
 	}
 	defer func() {
-		if err := locker.Release(group); err != nil {
+		if err = locker.Release(group); err != nil {
 			fmt.Fprintf(stderr, "Error releasing lock for group '%s': %v\n", group, err)
 		}
 	}()
 
-	historyWriter, err := history.WriteHistory(fs, &cfg, cmd, cfg.HistoryLines, cmdArgs)
-	if err != nil {
-		return fmt.Errorf("error creating history writer: %w", err)
-	}
+	historyWriter.MarkExecutionStart()
 
 	// Execute job
 	cmdCtx := commandCtx(ctx, cmd, cmdArgs...)
 	cmdCtx.SetStdout(stdout)
 	cmdCtx.SetStderr(stderr)
 
-	if err := cmdCtx.Run(); err != nil {
+	if err = cmdCtx.Run(); err != nil {
 		return fmt.Errorf("job execution for script '%s' failed: %w", cmd, err)
 	}
 
-	if err := historyWriter(); err != nil {
-		return fmt.Errorf("error writing history: %w", err)
-	}
+	historyWriter.MarkExecutionEnd()
 
 	return nil
 }
