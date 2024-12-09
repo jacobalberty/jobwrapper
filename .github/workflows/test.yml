@@ -1,0 +1,39 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Build
+      run: |
+        mkdir -p output/bin
+        go build -v -o output/bin ./cmd/...
+
+    - name: Test with Go
+      run: |
+        mkdir -p output/test_results
+        go test -json -v  -coverprofile=output/test_results/coverage.out -cover ./... > output/test_results/TestResults.json
+        go tool cover -html=output/test_results/coverage.out -o output/test_results/coverage.html
+
+    - name: Upload Go test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: Go-results
+        path: output/test_results
