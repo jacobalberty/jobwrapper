@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 
 	"github.com/jacobalberty/jobwrapper/internal/command"
 	"github.com/jacobalberty/jobwrapper/internal/config"
@@ -44,7 +43,7 @@ func run(
 	defer cancel()
 
 	group := args[0]
-	script := args[1]
+	cmd := args[1]
 	cmdArgs := args[2:]
 
 	// Load configuration
@@ -70,20 +69,18 @@ func run(
 		}
 	}()
 
-	scriptName := filepath.Base(script)
-
-	historyWriter, err := history.WriteHistory(fs, filepath.Join(cfg.LockDir, group, scriptName), cfg.HistoryLines, cmdArgs)
+	historyWriter, err := history.WriteHistory(fs, &cfg, cmd, cfg.HistoryLines, cmdArgs)
 	if err != nil {
 		return fmt.Errorf("error creating history writer: %w", err)
 	}
 
 	// Execute job
-	cmd := commandCtx(ctx, script, cmdArgs...)
-	cmd.SetStdout(stdout)
-	cmd.SetStderr(stderr)
+	cmdCtx := commandCtx(ctx, cmd, cmdArgs...)
+	cmdCtx.SetStdout(stdout)
+	cmdCtx.SetStderr(stderr)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("job execution for script '%s' failed: %w", script, err)
+	if err := cmdCtx.Run(); err != nil {
+		return fmt.Errorf("job execution for script '%s' failed: %w", cmd, err)
 	}
 
 	if err := historyWriter(); err != nil {

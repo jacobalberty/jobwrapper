@@ -4,18 +4,24 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/jacobalberty/jobwrapper/internal/config"
 	"github.com/jacobalberty/jobwrapper/internal/filesystem"
 )
 
 func TestWriteHistory(t *testing.T) {
 	mockFS := &filesystem.MockFileSystem{Files: make(map[string]*string)}
-	filePath := "test_history.log"
+	filePath := "test_history"
 	maxLines := 5
 
-	writeFunc, err := WriteHistory(mockFS, filePath, maxLines, nil)
+	cfg := &config.Config{
+		LockDir: "/tmp",
+	}
+
+	writeFunc, err := WriteHistory(mockFS, cfg, filePath, maxLines, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -27,7 +33,7 @@ func TestWriteHistory(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	file, err := mockFS.OpenFile(filePath, os.O_RDONLY, 0644)
+	file, err := mockFS.OpenFile(filepath.Join(cfg.LockDir, filePath+".log"), os.O_RDONLY, 0644)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
