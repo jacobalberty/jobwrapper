@@ -15,13 +15,15 @@ import (
 )
 
 func main() {
-	fs := filesystem.OSFileSystem{}
-	cmdCtx := command.NewRealCommandContext
-
-	// Use the NewFileLockFactory function to create the LockFactory
-	lockFactory := lock.NewFileLocker
-
-	if err := run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, fs, lockFactory, cmdCtx); err != nil {
+	if err := run(
+		context.Background(),
+		os.Args[1:],
+		os.Stdout,
+		os.Stderr,
+		filesystem.OSFileSystem{},
+		lock.NewFileLocker,
+		command.NewRealCommandContext,
+	); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -30,7 +32,8 @@ func main() {
 func run(
 	ctx context.Context,
 	args []string,
-	stdout, stderr io.Writer,
+	stdout io.Writer,
+	stderr io.Writer,
 	fs filesystem.FileSystem,
 	lockFactory lock.LockFactory,
 	commandCtx command.CommandContextFunc,
