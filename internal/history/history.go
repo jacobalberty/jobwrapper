@@ -12,8 +12,6 @@ import (
 	"github.com/jacobalberty/jobwrapper/internal/filesystem"
 )
 
-const maxArgLength = 15
-
 type HistoryWriter interface {
 	MarkExecutionStart()
 	MarkExecutionEnd()
@@ -72,24 +70,11 @@ func NewHistoryWriter(fs filesystem.FileSystem, cfg *config.Config, exePath stri
 	}, nil
 }
 
-func truncateArgs(args []string) []string {
-	truncatedArgs := make([]string, len(args))
-	for i, arg := range args {
-		if len(arg) > maxArgLength {
-			truncatedArgs[i] = arg[:maxArgLength]
-		} else {
-			truncatedArgs[i] = arg
-		}
-	}
-	return truncatedArgs
-}
-
 func (h *historyJsonFileWriter) createLogEntry(err error) string {
 	var (
-		exeName       = filepath.Base(h.exePath)
-		logBuffer     strings.Builder
-		logArgs       []any
-		truncatedArgs = truncateArgs(h.args)
+		exeName   = filepath.Base(h.exePath)
+		logBuffer strings.Builder
+		logArgs   []any
 	)
 	logArgs = append(logArgs,
 		"start", h.startTime.Format("2006-01-02 15:04:05"),
@@ -110,7 +95,7 @@ func (h *historyJsonFileWriter) createLogEntry(err error) string {
 
 	logArgs = append(logArgs,
 		"executable", exeName,
-		"args", strings.Join(truncatedArgs, " "),
+		"args", h.args,
 		"executable_path", h.exePath,
 		"error", err,
 	)
