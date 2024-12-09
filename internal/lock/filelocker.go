@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/gofrs/flock"
 	"github.com/jacobalberty/jobwrapper/internal/config"
 	"github.com/jacobalberty/jobwrapper/internal/filesystem"
+)
+
+const (
+	initialBackoff = 100 * time.Millisecond
+	maxBackoff     = 15 * time.Second
 )
 
 // FileLocker implements the Locker interface using lock files
@@ -30,10 +36,10 @@ func (fl *FileLocker) lockFilename(lockname string) string {
 func (fl *FileLocker) Acquire(ctx context.Context, lockName string) error {
 	var (
 		groupLockDir = filepath.Join(fl.cfg.LockDir, lockName)
-		err          error
 		fileLock     *flock.Flock
 		ok           bool
 	)
+
 	// Ensure lock directory exists
 	if err := fl.fs.MkdirAll(groupLockDir, 0755); err != nil {
 		return fmt.Errorf("error creating lock directory for group '%s': %w", lockName, err)
@@ -47,12 +53,27 @@ func (fl *FileLocker) Acquire(ctx context.Context, lockName string) error {
 		fileLock = flock.New(fl.lockFilename(lockName))
 	}
 
-	locked, err := fileLock.TryLockContext(ctx, 0)
-	if err != nil {
-		return fmt.Errorf("failed to acquire lock %s: %w", lockName, err)
-	}
-	if !locked {
-		return fmt.Errorf("lock %s already exists", lockName)
+	backoff := initialBackoff
+	for {
+		locked, err := fileLock.TryLock()
+		if err != nil {
+			return fmt.Errorf("failed to acquire lock %s: %w", lockName, err)
+		}
+		if locked {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled while trying to acquire lock %s", lockName)
+		case <-time.After(backoff):
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
 	}
 
 	fl.fileLocks[lockName] = fileLock
