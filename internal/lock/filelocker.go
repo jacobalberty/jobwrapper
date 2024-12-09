@@ -29,6 +29,7 @@ func NewFileLocker(cfg *config.Config, fs filesystem.FileSystem) (Locker, error)
 }
 
 func (fl *FileLocker) lockFilename(lockname string) string {
+	// The lock file path is constructed by joining the lock directory, lock name, and lock file name
 	return filepath.Join(fl.cfg.LockDir, lockname, fl.cfg.LockFileName)
 }
 
@@ -45,9 +46,7 @@ func (fl *FileLocker) Acquire(ctx context.Context, lockName string) error {
 		return fmt.Errorf("error creating lock directory for group '%s': %w", lockName, err)
 	}
 
-	if fileLock, ok = fl.fileLocks[lockName]; ok && fileLock.Locked() {
-		return fmt.Errorf("lock %s already exists", lockName)
-	}
+	fileLock, ok = fl.fileLocks[lockName]
 
 	if !ok {
 		fileLock = flock.New(fl.lockFilename(lockName))
