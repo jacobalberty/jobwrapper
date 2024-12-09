@@ -50,6 +50,7 @@ func (fl *FileLocker) Acquire(ctx context.Context, lockName string) error {
 
 	if !ok {
 		fileLock = flock.New(fl.lockFilename(lockName))
+		fl.fileLocks[lockName] = fileLock
 	}
 
 	backoff := initialBackoff
@@ -74,8 +75,6 @@ func (fl *FileLocker) Acquire(ctx context.Context, lockName string) error {
 			}
 		}
 	}
-
-	fl.fileLocks[lockName] = fileLock
 
 	return nil
 }
